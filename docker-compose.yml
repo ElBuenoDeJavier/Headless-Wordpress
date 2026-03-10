@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+
+  # ─────────────────────────────────────────
+  # BASE DE DATOS
+  # MySQL almacena todo el contenido de WordPress
+  # ─────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: wp_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword # Contraseña del superusuario de MySQL
+      MYSQL_DATABASE: wordpress # Nombre de la base de datos que se creará
+      MYSQL_USER: wpuser # Usuario que usará WordPress
+      MYSQL_PASSWORD: wppassword # Contraseña de ese usuario
+    volumes:
+      - mysql_data:/var/lib/mysql # Persiste los datos aunque pares el contenedor
+    networks:
+      - wp_network
+
+  # ─────────────────────────────────────────
+  # WORDPRESS (el CMS / backend)
+  # Panel de administración en localhost:8080
+  # contraseña y nombre usuario &POxu)wHC16dP0k!du admin
+  # ─────────────────────────────────────────
+  wordpress:
+    image: wordpress:latest
+    container_name: wp_cms
+    restart: always
+    depends_on:
+      - db # Espera a que MySQL esté listo antes de arrancar
+    ports:
+      - "8080:80" # Tu navegador → localhost:8080 → contenedor WordPress
+    environment:
+      WORDPRESS_DB_HOST: db:3306 # "db" es el nombre del servicio MySQL de arriba
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wordpress_data:/var/www/html # Persiste WordPress (plugins, temas, uploads)
+    networks:
+      - wp_network
+
+  # ─────────────────────────────────────────
+  # PHPMYADMIN
+  # Interfaz visual para gestionar la base de datos
+  # Panel en localhost:8081
+  # ─────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: wp_phpmyadmin
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "8081:80" # Tu navegador → localhost:8081 → phpMyAdmin
+    environment:
+      PMA_HOST: db # Le decimos a phpMyAdmin dónde está MySQL
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: rootpassword # Misma contraseña que definiste en el servicio db
+    networks:
+      - wp_network
+
+  # ─────────────────────────────────────────
+  # FRONTEND (Next.js)
+  # Tu web en localhost:3000
+  # ─────────────────────────────────────────
+  frontend:
+    image: node:20-alpine # Usamos la imagen oficial de Node.js
+    container_name: wp_frontend
+    restart: always
+    working_dir: /app # Directorio de trabajo dentro del contenedor
+    volumes:
+      - ./frontend:/app # Tu carpeta local /frontend ↔ /app en el contenedor
+      - /app/node_modules # Evita que los node_modules locales machaquen los del contenedor
+    ports:
+      - "3000:3000" # Tu navegador → localhost:3000 → contenedor Next.js
+    environment:
+      - NEXT_PUBLIC_WORDPRESS_URL=http://wordpress # URL interna de WordPress (entre contenedores)
+    command: sh -c "npm install && npm run dev" # Instala dependencias y arranca en modo desarrollo
+    depends_on:
+      - wordpress
+    networks:
+      - wp_network
+
+# ─────────────────────────────────────────
+# VOLÚMENES
+# Donde Docker guarda los datos persistentes
+# (no se borran al parar los contenedores)
+# ─────────────────────────────────────────
+volumes:
+  mysql_data:
+  wordpress_data:
+
+    # ─────────────────────────────────────────
+    # RED INTERNA
+    # Permite que los contenedores se hablen entre sí
+    # por nombre (ej: "db", "wordpress", "frontend")
+    # ─────────────────────────────────────────
+networks:
+  wp_network:
+    driver: bridge
